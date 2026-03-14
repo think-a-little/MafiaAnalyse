@@ -4,44 +4,107 @@ import java.util.*;
 
 public class Main {
 
-    // Структура для хранения высказывания игрока
-    static class Statement {
-        int[] suspects;          // Список подозреваемых
-        int[] peaceFulPlayers;   // Список мирных игроков
+    // Класс для представления игрока с информацией о нём
+    static class PlayerInfo {
+        double rating;           // Текущий рейтинг доверия
+        List<Integer> accusedBy; // Списки, кто меня подозревал
+        List<Integer> suspected; // Кого я подозреваю
+        List<Integer> trusted;   // Кого считаю мирным
 
-        public Statement(int[] suspects, int[] peaceFulPlayers) {
-            this.suspects = suspects;
-            this.peaceFulPlayers = peaceFulPlayers;
+        public PlayerInfo(double initialRating) {
+            this.rating = initialRating;
+            this.accusedBy = new ArrayList<>();
+            this.suspected = new ArrayList<>();
+            this.trusted = new ArrayList<>();
         }
     }
 
-    // Метод для оценки соответствия гипотезы о мафии заявленным подозрениям
-    private static boolean checkHypothesis(int[] mafiaSet, Statement statement) {
-        // Оба подозреваемых должны входить в список мафии,
-        // А ни один из мирных игроков не должен находиться в мафии
-        return containsAll(mafiaSet, statement.suspects) && !containsAny(mafiaSet, statement.peaceFulPlayers);
+    // Класс для сохранения статуса игры
+    static class GameState {
+        List<PlayerInfo> players;     // Информация о каждом игроке
+        List<Integer> livingPlayers; // Номера выживших игроков
+        List<Integer> mafias;        // Раскрытые мафиози
+
+        public GameState(int numPlayers) {
+            players = new ArrayList<>(numPlayers);
+            for (int i = 0; i < numPlayers; i++) {
+                players.add(new PlayerInfo(0.5)); // Начальный рейтинг доверия 0.5
+            }
+            livingPlayers = new ArrayList<>(players.size()); // Изначально все живы
+            for (int i = 0; i < numPlayers; i++) {
+                livingPlayers.add(i);
+            }
+            mafias = new ArrayList<>();
+        }
     }
 
-    // Вспомогательные методы для проверки включенности элементов в множества
-    private static boolean containsAll(int[] set1, int[] set2) {
-        for (int num : set2) {
-            if (!contains(set1, num)) return false;
+    // Основная логика обновления рейтингов
+    public static void updateRatings(GameState gameState) {
+        List<PlayerInfo> players = gameState.players;
+        List<Integer> livingPlayers = gameState.livingPlayers;
+        List<Integer> mafias = gameState.mafias;
+
+        // Перебираем всех активных игроков
+        for (PlayerInfo player : players) {
+            // Обрабатываем мирных игроков
+            for (Integer trustedPlayerId : player.trusted) {
+                double trustPenalty = 0.5 / livingPlayers.size() / player.trusted.size();
+                player.rating -= trustPenalty;              // Снижение собственного рейтинга
+                players.get(trustedPlayerId).rating += trustPenalty; // Повышение рейтинга доверенного
+            }
+
+            // Обрабатываем подозреваемых
+            for (Integer suspectedPlayerId : player.suspected) {
+                double suspicionPenalty = 0.5 / livingPlayers.size() / player.suspected.size();
+//                player.rating -= suspicionPenalty;                  // Снижение собственного рейтинга
+                players.get(suspectedPlayerId).rating -= suspicionPenalty; // Понижение рейтинга подозреваемого
+            }
         }
-        return true;
+
+        // Дополнительно повышаем рейтинг тех, кто правильно указал на мафию
+        for (Integer correctAccuser : mafias) {
+            PlayerInfo accuser = players.get(correctAccuser);
+            for (Integer suspectedPlayerId : accuser.suspected) {
+                if (gameState.mafias.contains(suspectedPlayerId)) {
+                    double bonus = 0.5 * Math.abs(accuser.rating - players.get(suspectedPlayerId).rating);
+                    accuser.rating += bonus;
+                }
+            }
+        }
     }
 
-    private static boolean contains(int[] array, int value) {
-        for (int element : array) {
-            if (element == value) return true;
-        }
-        return false;
-    }
+    // Главный метод расчета наилучшей гипотезы
+    public static int[] findMinimalMafiaSet(GameState gameState) {
+        List<PlayerInfo> players = gameState.players;
+        List<Integer> livingPlayers = gameState.livingPlayers;
+        List<int[]> possibleSets = generateCombinations(livingPlayers.size(), 3); // Возможные тройки мафии
 
-    private static boolean containsAny(int[] set1, int[] set2) {
-        for (int num : set2) {
-            if (contains(set1, num)) return true;
+        // Формируем гипотезы, основанные на текущих рейтингах
+        Map<String, Double> hypothesisScores = new HashMap<>();
+        for (int[] combination : possibleSets) {
+            double combinedScore = 0;
+            for (int id : combination) {
+                combinedScore += players.get(id).rating;
+            }
+            hypothesisScores.put(Arrays.toString(combination), combinedScore);
         }
-        return false;
+
+        // Подробный вывод информации по каждой гипотезе
+        System.out.println("\nПодробная информация по каждой гипотезе:");
+        hypothesisScores.forEach((hypothesis, score) ->
+                System.out.println("Группа мафии: " + hypothesis + ", Общая сумма рейтингов: " + score)
+        );
+
+        // Лучший выбор на основе минимальной суммы рейтингов
+        String bestKey = Collections.min(hypothesisScores.entrySet(),
+                        Comparator.comparingDouble(Map.Entry::getValue))
+                .getKey();
+        double minimalRating = hypothesisScores.get(bestKey);
+        System.out.println("\nИтоговый минимальный рейтинг группы мафии: " + minimalRating);
+
+        return Arrays.stream(bestKey.substring(1, bestKey.length() - 1).split(", "))
+                .mapToInt(Integer::parseInt)
+                .toArray();
     }
 
     // Генерация всех возможных троек мафий из набора чисел
@@ -64,37 +127,12 @@ public class Main {
         }
     }
 
-    // Основной метод расчета наилучшей гипотезы
-    public static int[] findBestMafiaSet(Statement[] statements) {
-        List<int[]> allPossibleSets = generateCombinations(10, 3); // Всего три мафии из 10 игроков
-        Map<String, Integer> scores = new HashMap<>(); // Результаты подсчета очков
-
-        for (int[] mafiaSet : allPossibleSets) {
-            String key = Arrays.toString(mafiaSet);
-            int score = 0;
-
-            // Оцениваем каждую гипотезу относительно заявлений игроков
-            for (Statement statement : statements) {
-                if (checkHypothesis(mafiaSet, statement)) {
-                    score++; // За каждое удачное попадание увеличиваем счётчик
-                }
-            }
-            scores.put(key, score);
-        }
-
-        // Найдем оптимальную гипотезу
-        String bestKey = Collections.max(scores.entrySet(), Comparator.comparingInt(Map.Entry::getValue)).getKey();
-        return Arrays.stream(bestKey.substring(1, bestKey.length() - 1).split(", "))
-                .mapToInt(Integer::parseInt)
-                .toArray();
-    }
-
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
         final int NUM_PLAYERS = 10; // Общее количество игроков
-        Statement[] statements = new Statement[NUM_PLAYERS]; // Массив заявлений игроков
+        GameState gameState = new GameState(NUM_PLAYERS); // Создаем состояние игры
 
-        // Сбор данных от пользователей
+        // Интерактивный сбор данных от пользователя
         for (int i = 0; i < NUM_PLAYERS; i++) {
             System.out.print("Количество подозреваемых для игрока №" + (i + 1) + ": ");
             int numSuspects = scanner.nextInt();
@@ -105,39 +143,27 @@ public class Main {
             }
 
             System.out.print("Количество мирных игроков для игрока №" + (i + 1) + ": ");
-            int numPeaceful = scanner.nextInt();
-            int[] peaceFulPlayers = new int[numPeaceful];
-            for (int j = 0; j < numPeaceful; j++) {
+            int numTrusted = scanner.nextInt();
+            int[] trusted = new int[numTrusted];
+            for (int j = 0; j < numTrusted; j++) {
                 System.out.print("Мирный игрок №");
-                peaceFulPlayers[j] = scanner.nextInt() - 1;
+                trusted[j] = scanner.nextInt() - 1;
             }
 
-            statements[i] = new Statement(suspects, peaceFulPlayers);
-        }
-
-        // Выполнение основного расчёта
-        int[] bestMafiaSet = findBestMafiaSet(statements);
-        System.out.println("\nНаиболее вероятная группа мафии: " + Arrays.toString(bestMafiaSet));
-
-        // Дополнительная статистика и детализация
-        List<int[]> allPossibleSets = generateCombinations(10, 3); // Всего три мафии из 10 игроков
-        Map<String, Integer> scores = new HashMap<>();
-
-        for (int[] mafiaSet : allPossibleSets) {
-            String key = Arrays.toString(mafiaSet);
-            int score = 0;
-
-            // Оцениваем каждую гипотезу относительно заявлений игроков
-            for (Statement statement : statements) {
-                if (checkHypothesis(mafiaSet, statement)) {
-                    score++; // За каждое удачное попадание увеличиваем счётчик
-                }
+            // Добавляем данные о подозрениях и доверии
+            for (int suspect : suspects) {
+                gameState.players.get(i).suspected.add(suspect);
             }
-            scores.put(key, score);
+            for (int trustedPlayer : trusted) {
+                gameState.players.get(i).trusted.add(trustedPlayer);
+            }
         }
 
-        // Отображение дополнительной статистики
-        System.out.println("\nПодробная статистика по всем гипотезам:");
-        scores.forEach((key, value) -> System.out.println("Гипотеза: " + key + ", Очки: " + value));
+        // Обновление рейтингов
+        updateRatings(gameState);
+
+        // Получение наилучшего предположения о группе мафии
+        int[] minimalMafiaSet = findMinimalMafiaSet(gameState);
+        System.out.println("\nМинимальная группа мафии: " + Arrays.toString(minimalMafiaSet));
     }
 }
