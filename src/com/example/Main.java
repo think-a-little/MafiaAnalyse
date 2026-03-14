@@ -23,7 +23,8 @@ public class Main {
     static class GameState {
         List<PlayerInfo> players;     // Информация о каждом игроке
         List<Integer> livingPlayers; // Номера выживших игроков
-        List<Integer> mafias;        // Раскрытые мафиози
+        List<Integer> confirmedMafias; // Точно известные мафиози
+        List<Integer> confirmedCivilians; // Точно известные мирные жители
 
         public GameState(int numPlayers) {
             players = new ArrayList<>(numPlayers);
@@ -34,15 +35,34 @@ public class Main {
             for (int i = 0; i < numPlayers; i++) {
                 livingPlayers.add(i);
             }
-            mafias = new ArrayList<>();
+            confirmedMafias = new ArrayList<>();
+            confirmedCivilians = new ArrayList<>();
         }
+
+        // Метод для добавления или удаления игроков из списка живых
+        public void changeLivingStatus(int playerId) {
+            livingPlayers.removeIf(p -> p.equals(playerId));
+        }
+
+        // Установка точного статуса игрока (мафия или мирный)
+        public void confirmRole(int playerId, boolean isMafia) {
+            if (isMafia) {
+                confirmedMafias.add(playerId);
+                players.get(playerId).rating = 0; // Устанавливаем рейтинг мафиози на 0
+            } else {
+                confirmedCivilians.add(playerId);
+                players.get(playerId).rating = 1; // Устанавливаем рейтинг мирного на 1
+            }
+        }
+
     }
 
     // Основная логика обновления рейтингов
     public static void updateRatings(GameState gameState) {
         List<PlayerInfo> players = gameState.players;
         List<Integer> livingPlayers = gameState.livingPlayers;
-        List<Integer> mafias = gameState.mafias;
+        List<Integer> confirmedMafias = gameState.confirmedMafias;
+        List<Integer> confirmedCivilians = gameState.confirmedCivilians;
 
         // Перебираем всех активных игроков
         for (PlayerInfo player : players) {
@@ -56,16 +76,16 @@ public class Main {
             // Обрабатываем подозреваемых
             for (Integer suspectedPlayerId : player.suspected) {
                 double suspicionPenalty = 0.5 / livingPlayers.size() / player.suspected.size();
-//                player.rating -= suspicionPenalty;                  // Снижение собственного рейтинга
+                player.rating -= suspicionPenalty;                  // Снижение собственного рейтинга
                 players.get(suspectedPlayerId).rating -= suspicionPenalty; // Понижение рейтинга подозреваемого
             }
         }
 
         // Дополнительно повышаем рейтинг тех, кто правильно указал на мафию
-        for (Integer correctAccuser : mafias) {
+        for (Integer correctAccuser : confirmedMafias) {
             PlayerInfo accuser = players.get(correctAccuser);
             for (Integer suspectedPlayerId : accuser.suspected) {
-                if (gameState.mafias.contains(suspectedPlayerId)) {
+                if (gameState.confirmedMafias.contains(suspectedPlayerId)) {
                     double bonus = 0.5 * Math.abs(accuser.rating - players.get(suspectedPlayerId).rating);
                     accuser.rating += bonus;
                 }
@@ -162,8 +182,20 @@ public class Main {
         // Обновление рейтингов
         updateRatings(gameState);
 
+        // Пример изменения живого статуса игрока
+        gameState.changeLivingStatus(5); // Удалили игрока #5 из живых
+
+        gameState.confirmRole(5, false); // Установили игрока #3 как мафиози
+
+        // Пример подтверждения игрока как мафиози
+        gameState.confirmRole(3, true); // Установили игрока #3 как мафиози
+
+        // Пример подтверждения игрока как мирного
+        gameState.confirmRole(7, false); // Установили игрока #7 как мирного
+
         // Получение наилучшего предположения о группе мафии
         int[] minimalMafiaSet = findMinimalMafiaSet(gameState);
         System.out.println("\nМинимальная группа мафии: " + Arrays.toString(minimalMafiaSet));
+
     }
 }
